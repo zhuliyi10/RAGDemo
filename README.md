@@ -1,11 +1,24 @@
 # RAGDemo
 
-自研轻量 RAG（检索增强生成）服务：文档入库 → 分块 → 向量化 → 语义检索 → 增强生成。
+**从 0 到 1 实现**的自研轻量 RAG（检索增强生成）服务：文档入库 → 分块 → 向量化 → 语义检索 → 增强生成。
+
+不用 LangChain / LlamaIndex —— 分块、检索、Prompt 组装、编排全部手写，每一行 RAG 代码都透明可控。
+
+## 从 0 到 1 文档站（VitePress）
+
+技术实现以教程形式分章建站，按依赖顺序拆成 8 步，每步讲清楚「做什么、为什么、怎么做」：
+
+> 项目概述 → 原理与架构 → ① 初始化与配置 → ② 模型抽象层 → ③ 文档解析与分块 → ④ 向量化与存储 → ⑤ 检索与生成 → ⑥ REST API → ⑦ 前端界面 → ⑧ 测试与运行 → 设计决策复盘
+
+```bash
+cd docs && npm install && npm run dev    # 文档站开发预览
+npm run build                            # 产出 docs/.vitepress/dist，可静态托管
+```
 
 ## 特性
 
 - 自研文档解析与分块，不依赖 RAG 框架，代码透明可控
-- 多模型提供商可配置切换：OpenAI / Anthropic / Ollama（LLM 与 Embedding 可独立选择）
+- 多模型提供商可配置切换：OpenAI / Anthropic / Ollama / 智谱（LLM 与 Embedding 可独立选择）
 - ChromaDB 本地持久化向量存储，支持按文档删除与溯源
 - FastAPI 提供完整 REST API
 

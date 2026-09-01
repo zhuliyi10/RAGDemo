@@ -119,6 +119,34 @@ def ingest(files: list[UploadFile], settings=Depends(get_settings),
     return results
 ```
 
+## 流式问答:`/api/query/stream`
+
+`/api/query` 是「生成完再返回」;`/api/query/stream` 用 **SSE(Server-Sent Events)** 把回答「边生成边推」。请求体与 `/query` 完全一致,响应为 `text/event-stream`,每帧一行 JSON:
+
+```text
+data: {"type": "sources", "sources": [...]}    # 先推引用来源
+data: {"type": "delta", "text": "根据"}         # 回答增量,重复多帧
+data: {"type": "done", "mode": "custom"}       # 结束标记
+data: {"type": "error", "detail": "..."}       # 流中途异常(替代 done)
+```
+
+实现上分三层,各自只加一个流式方法:
+
+```
+LLMProvider.chat_stream()    4 家 provider 各用官方 SDK 的流式能力
+    ↓ (openai stream=True / anthropic messages.stream / ollama NDJSON)
+Generator.generate_stream()  Prompt 组装与同步版完全一致
+    ↓
+RAGPipeline.answer_stream()  事件编排:检索不变,sources 先行,生成逐段
+```
+
+两个设计点:
+
+- **sources 先于回答**:检索一完成就把引用推给前端,流式过程中就能展开来源,不必等回答结束
+- **错误也在流内**:LLM 中途失败时推 `error` 帧而非让连接无响应挂断;而依赖缺失等**构造期错误**仍在流开始前返回 HTTP 500
+
+两种模式的事件协议完全一致(框架模式换 `chain.stream()` 生成),对前端透明。
+
 ## 应用入口:`app/main.py`
 
 ```python
@@ -161,6 +189,11 @@ curl -X POST http://localhost:8000/api/query \
 curl -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
   -d '{"question": "如何配置 Ollama?", "top_k": 3, "mode": "framework"}'
+
+# 流式问答(SSE,加 -N 关闭缓冲逐帧输出)
+curl -N -X POST http://localhost:8000/api/query/stream \
+  -H "Content-Type: application/json" \
+  -d '{"question": "如何配置 Ollama?", "top_k": 3, "mode": "custom"}'
 ```
 
 下一步 → [第 7 步 · 前端界面](/guide/09-frontend)

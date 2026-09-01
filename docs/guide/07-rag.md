@@ -92,6 +92,12 @@ class RAGPipeline:
 
 `RAGResult.sources` 携带 `{source, content, similarity}`,前端「引用展开」展示的就是它。
 
+### 流式编排:`answer_stream()`
+
+`answer()` 之外,`RAGPipeline` 还提供 `answer_stream()`,事件协议为 **`sources → delta* → done`**:检索一完成就先推引用来源,再逐段推回答增量;检索空命中时同样不调 LLM。
+
+支撑它的底层能力是 `LLMProvider.chat_stream()` —— 四家 provider 各自用官方 SDK 的流式接口(openai `stream=True` / anthropic `messages.stream` / ollama NDJSON 逐行解析),`Generator.generate_stream()` 复用与同步版完全一致的 Prompt 组装。
+
 ## 框架模式对照:`app/rag/framework_pipeline.py`
 
 自研链路讲完了,现在请出「对照组」—— 同样的 RAG 流程,用 LangChain 再实现一遍(`mode=framework` 时启用):
@@ -124,7 +130,9 @@ answer = chain.invoke({"context": context, "question": question})
 - **LangChain 是可选依赖**:import 放在构造函数内,未安装时框架模式返回 500 + 安装指引,服务启动与自研模式完全不受影响
 - 智谱 / Ollama 走 OpenAI 兼容接口(`ChatOpenAI` + 自定义 `base_url`),anthropic 用官方 `langchain-anthropic`
 
-**为什么要做这个对照?** 第 1 章说过自研的理由;但「框架到底帮你做了什么」光靠嘴说不够直观。同一问题、同一知识库、同一 Prompt,切换模式各问一遍,框架封装的便利与「黑盒感」就都体会到了。
+- **为什么要做这个对照?** 第 1 章说过自研的理由;但「框架到底帮你做了什么」光靠嘴说不够直观。同一问题、同一知识库、同一 Prompt,切换模式各问一遍,框架封装的便利与「黑盒感」就都体会到了。
+
+框架模式同样实现了 `answer_stream()`(`chain.stream()`),事件协议与自研完全一致 —— 流式行为对前端透明,切模式只是换了个生成器。
 
 ## 至此后端核心闭环
 

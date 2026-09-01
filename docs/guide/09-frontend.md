@@ -111,7 +111,7 @@ export default function App() {
 | 组件 | 职责 | 关键交互 |
 |---|---|---|
 | `DocumentsPanel` | 文件上传(多选)、文档列表(含分块数)、删除 | 调 `ingestDocuments` 后逐项展示 `errors`,成功即回调 `onChanged` |
-| `ChatPanel` | 问题输入、**模式切换(自研/框架)**、`top_k` 选择、消息流 | 调 `query(question, topK, mode)`,把 `answer` 与 `sources` 一起渲染 |
+| `ChatPanel` | 问题输入、**模式切换(自研/框架)**、`top_k` 选择、消息流 | 调 `queryStream`,**流式渲染** answer 与 sources |
 | `Message` | 单条回答 | **引用来源可展开**:来源文件名 + 片段原文 + 相似度;回答附**模式徽标** |
 | `HealthBadge` | 顶部健康徽标 | 绿/灰由 App 的 15s 轮询驱动 |
 
@@ -136,6 +136,27 @@ const [mode, setMode] = useState<RagMode>('custom')
 
 - 每条回答来自后端回传的 `mode`,在气泡上渲染成小徽标 —— 同一问题用两种模式各问一遍,回答差异一目了然
 - 后端未安装 LangChain 时选「框架」,错误信息(含安装指引)照常透出在错误气泡里,前端无需感知依赖状态
+
+## 流式渲染:逐字显示
+
+`ChatPanel` 的提问走 `queryStream()`(`api.ts`):`fetch` + `ReadableStream` 读取 SSE,按 `\n\n` 分帧解析 JSON 事件:
+
+```tsx
+await queryStream(question, topK, mode, {
+  onSources: (sources) => patchLast((prev) => ({ ...prev, sources })),
+  onDelta: (delta) =>
+    patchLast((prev) => ({
+      ...prev,
+      text: (prev.text === '…' ? '' : prev.text) + delta,
+    })),
+})
+```
+
+- `sources` 事件 → 更新最后一条消息的引用来源(流式过程中就能展开看)
+- `delta` 事件 → 追加文本,占位符 `…` 被首个增量替换;回答是渐进出现的,而非等全部生成完
+- `error` 事件 / 连接失败 → 渲染为错误气泡,与同步端点的错误处理体验一致
+
+「生成中…」的 typing 提示只在尚未收到任何增量时显示,第一个字到达后就让位给真实内容。
 
 ## 生产构建
 

@@ -19,6 +19,7 @@ npm run build                            # 产出 docs/.vitepress/dist，可静�
 
 - 自研文档解析与分块，不依赖 RAG 框架，代码透明可控
 - 双模式问答：自研 pipeline 与 LangChain 框架模式一键切换，共享同一向量库（框架依赖可选，不装不影响自研模式）
+- 流式输出：SSE 边生成边返回，引用来源先于回答送达，两种模式均支持
 - 多模型提供商可配置切换：OpenAI / Anthropic / Ollama / 智谱（LLM 与 Embedding 可独立选择）
 - ChromaDB 本地持久化向量存储，支持按文档删除与溯源
 - FastAPI 提供完整 REST API
@@ -81,7 +82,7 @@ ZHIPU_API_KEY=你的智谱Key
 
 ## 前端页面
 
-`frontend/` 为 React + TypeScript + Vite 工程，提供可视化界面：知识库文档管理（上传/删除）与对话式问答（含引用来源展开），问答工具栏支持**自研 / 框架模式切换**，每条回答标注所用模式。
+`frontend/` 为 React + TypeScript + Vite 工程，提供可视化界面：知识库文档管理（上传/删除）与对话式问答（回答流式逐字显示、引用来源展开），问答工具栏支持**自研 / 框架模式切换**，每条回答标注所用模式。
 
 ```bash
 # 终端 1：启动后端
@@ -103,6 +104,7 @@ cd frontend && npm install && npm run dev
 | GET | `/api/documents` | 列出已入库文档及分块数 |
 | DELETE | `/api/documents/{doc_id}` | 删除文档及其全部向量 |
 | POST | `/api/query` | RAG 问答：`{"question": "...", "top_k": 4, "mode": "custom"}`，`mode` 可选 `custom`（自研）/ `framework`（LangChain） |
+| POST | `/api/query/stream` | 流式问答（SSE）：事件流 `sources → delta* → done`，请求体与 `/query` 一致 |
 | GET | `/api/health` | 健康检查 |
 
 ### 示例

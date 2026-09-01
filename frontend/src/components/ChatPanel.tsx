@@ -12,15 +12,30 @@ export default function ChatPanel() {
   const [mode, setMode] = useState<RagMode>('custom')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  // 是否「贴底跟随」：仅当用户本就停留在底部附近时才自动滚动，
+  // 避免流式期间的高频滚动抢占用户手动拖拽/上翻的滚动位置。
+  const stickToBottomRef = useRef(true)
+
+  const handleScroll = () => {
+    const el = listRef.current
+    if (!el) return
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // behavior 用 auto：流式期间每个增量都触发滚动，smooth 动画会被反复重启，
+    // 既打断用户拖拽滚动条，也造成滚动卡顿感
+    if (stickToBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+    }
   }, [messages, loading])
 
   const handleSend = async () => {
     const question = input.trim()
     if (!question || loading) return
     setInput('')
+    stickToBottomRef.current = true // 发新消息时重新跟随最新回答
     // 占位消息：'…' 表示尚未收到任何增量
     setMessages((m) => [...m, { role: 'user', text: question }, { role: 'assistant', text: '…', mode }])
     setLoading(true)
@@ -90,7 +105,7 @@ export default function ChatPanel() {
         </div>
       </div>
 
-      <div className="messages">
+      <div className="messages" ref={listRef} onScroll={handleScroll}>
         {messages.length === 0 && (
           <div className="chat-empty">
             <p>先在左侧上传文档，然后在这里提问。</p>

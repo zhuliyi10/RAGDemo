@@ -10,9 +10,10 @@ from app.deps import (
     get_vector_store,
 )
 from app.ingestion.pipeline import IngestionResult, ingest_document
+from app.rag.framework_pipeline import FrameworkRAGPipeline
 from app.rag.pipeline import RAGPipeline
 from app.retrieval.vector_store import VectorStore
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,14 @@ router = APIRouter(prefix="/api")
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, description="用户问题")
     top_k: int | None = Field(default=None, ge=1, le=20, description="检索片段数")
+    mode: str = Field(default="custom", description="问答模式: custom=自研 / framework=LangChain 框架")
+
+    @field_validator("mode")
+    @classmethod
+    def check_mode(cls, v: str) -> str:
+        if v not in ("custom", "framework"):
+            raise ValueError("mode 仅支持 custom 或 framework")
+        return v
 
 
 @router.get("/health")
@@ -78,16 +87,32 @@ def query(
     llm_provider=Depends(get_llm_provider),
     embedding_provider=Depends(get_embedding_provider),
 ) -> dict:
-    """RAG 问答：检索相关片段并生成回答，附引用来源。"""
-    pipeline = RAGPipeline(
-        llm_provider=llm_provider,
-        embedding_provider=embedding_provider,
-        vector_store=vector_store,
-        top_k=req.top_k or settings.top_k,
-    )
+    """RAG 问答：检索相关片段并生成回答，附引用来源。
+
+    mode 指定实现：custom 走自研 pipeline，framework 走 LangChain 编排；
+    两种模式共享同一向量库，仅生成链路不同。
+    """
+    if req.mode == "framework":
+        try:
+            pipeline = FrameworkRAGPipeline(
+                settings=settings,
+                embedding_provider=embedding_provider,
+                vector_store=vector_store,
+                top_k=req.top_k or settings.top_k,
+            )
+        except (RuntimeError, ValueError) as exc:  # 未装依赖 / 提供商或 Key 配置问题
+            logger.warning("框架模式初始化失败: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+    else:
+        pipeline = RAGPipeline(
+            llm_provider=llm_provider,
+            embedding_provider=embedding_provider,
+            vector_store=vector_store,
+            top_k=req.top_k or settings.top_k,
+        )
     try:
         result = pipeline.answer(req.question)
     except Exception as exc:
         logger.exception("问答失败: %s", req.question)
         raise HTTPException(status_code=500, detail=f"问答失败: {exc}") from exc
-    return {"answer": result.answer, "sources": result.sources}
+    return {"answer": result.answer, "sources": result.sources, "mode": req.mode}

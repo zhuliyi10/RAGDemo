@@ -1,5 +1,8 @@
 /** 后端 API 类型定义。 */
 
+/** 问答模式：custom=自研 pipeline，framework=LangChain 框架 */
+export type RagMode = 'custom' | 'framework'
+
 export interface Source {
   source: string
   content: string
@@ -9,6 +12,7 @@ export interface Source {
 export interface QueryResponse {
   answer: string
   sources: Source[]
+  mode?: RagMode
 }
 
 export interface DocumentInfo {
@@ -29,4 +33,5 @@ export interface ChatMessage {
   text: string
   sources?: Source[]
   error?: boolean
+  mode?: RagMode
 }

@@ -213,6 +213,55 @@ body {
 
 .chat-toolbar h2 { margin: 0; }
 
+.chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 模式切换（自研 / 框架） */
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mode-switch button {
+  background: var(--panel);
+  color: var(--text-weak);
+  border-radius: 0;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.mode-switch button + button {
+  border-left: 1px solid var(--border);
+}
+
+.mode-switch button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.mode-badge {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid var(--border);
+  color: var(--text-weak);
+  background: #fff;
+}
+
+.mode-badge.framework {
+  color: var(--primary);
+  border-color: #bfd3ff;
+  background: #eff6ff;
+}
+
 .topk {
   font-size: 13px;
   color: var(--text-weak);

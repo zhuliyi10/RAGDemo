@@ -6,6 +6,11 @@ export default function Message({ message }: { message: ChatMessage }) {
   }
   return (
     <div className={`bubble assistant ${message.error ? 'error' : ''}`}>
+      {message.mode && !message.error && (
+        <span className={`mode-badge ${message.mode}`}>
+          {message.mode === 'custom' ? '自研' : '框架'}
+        </span>
+      )}
       <div className="answer">{message.text}</div>
       {message.sources && message.sources.length > 0 && (
         <details className="sources">

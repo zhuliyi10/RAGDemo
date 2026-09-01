@@ -1,5 +1,5 @@
 /** 后端 API 封装：统一错误处理与 JSON 解析。 */
-import type { DocumentInfo, IngestionResult, QueryResponse } from './types'
+import type { DocumentInfo, IngestionResult, QueryResponse, RagMode } from './types'
 
 const BASE = '/api'
 
@@ -43,10 +43,14 @@ export function deleteDocument(docId: string): Promise<{ status: string }> {
   return request(`/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' })
 }
 
-export function query(question: string, topK?: number): Promise<QueryResponse> {
+export function query(
+  question: string,
+  topK?: number,
+  mode: RagMode = 'custom',
+): Promise<QueryResponse> {
   return request('/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, top_k: topK }),
+    body: JSON.stringify({ question, top_k: topK, mode }),
   })
 }

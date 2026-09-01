@@ -34,6 +34,8 @@ class Settings(BaseSettings):
 
     # 智谱 AI（bigmodel.cn）
     zhipu_base_url: str = "https://open.bigmodel.cn/api/anthropic"
+    # 智谱 OpenAI 兼容对话接口（框架模式 LangChain ChatOpenAI 使用）
+    zhipu_openai_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     zhipu_embedding_url: str = "https://open.bigmodel.cn/api/paas/v4/embeddings"
 
     # Ollama

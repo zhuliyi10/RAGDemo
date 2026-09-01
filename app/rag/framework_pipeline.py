@@ -7,6 +7,8 @@ Prompt 组装与 LLM 调用改由 LangChain 的 ChatModel + LCEL 链完成，
 LangChain 为可选依赖，未安装时在构造阶段抛出带安装指引的错误，
 保证服务在不装框架依赖时仍可正常启动并使用自研模式。
 """
+from collections.abc import Iterator
+
 from pydantic import SecretStr
 
 from app.config import Settings
@@ -112,3 +114,32 @@ class FrameworkRAGPipeline:
             for hit in hits
         ]
         return RAGResult(answer=answer, sources=sources)
+
+    def answer_stream(self, question: str, top_k: int | None = None) -> Iterator[tuple]:
+        """流式问答，事件协议与 RAGPipeline.answer_stream 完全一致。"""
+        k = top_k or self._top_k
+        hits = self._retriever.retrieve(question, top_k=k)
+        if not hits:
+            yield ("delta", NO_CONTEXT_ANSWER)
+            yield ("done", None)
+            return
+
+        yield (
+            "sources",
+            [
+                {
+                    "source": hit["source"],
+                    "content": hit["content"],
+                    "similarity": hit["similarity"],
+                }
+                for hit in hits
+            ],
+        )
+        context = "\n\n".join(
+            f"[片段 {i + 1}] 来源: {hit['source']}\n{hit['content']}"
+            for i, hit in enumerate(hits)
+        )
+        for chunk in self._chain.stream({"context": context, "question": question}):
+            if chunk:
+                yield ("delta", chunk)
+        yield ("done", None)

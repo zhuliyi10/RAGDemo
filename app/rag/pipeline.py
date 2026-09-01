@@ -1,4 +1,5 @@
 """RAG 主流程：检索 → 增强 → 生成。"""
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from app.core.base import EmbeddingProvider, LLMProvider
@@ -48,3 +49,30 @@ class RAGPipeline:
             for hit in hits
         ]
         return RAGResult(answer=answer, sources=sources)
+
+    def answer_stream(self, question: str, top_k: int | None = None) -> Iterator[tuple]:
+        """流式问答，事件协议：
+
+        ("sources", 来源列表) → ("delta", 文本增量)* → ("done", None)；
+        检索空命中时不调 LLM，直接 yield 一段固定文案。
+        """
+        k = top_k or self._top_k
+        hits = self._retriever.retrieve(question, top_k=k)
+        if not hits:
+            yield ("delta", NO_CONTEXT_ANSWER)
+            yield ("done", None)
+            return
+
+        yield (
+            "sources",
+            [
+                {
+                    "source": hit["source"],
+                    "content": hit["content"],
+                    "similarity": hit["similarity"],
+                }
+                for hit in hits
+            ],
+        )
+        yield from (("delta", delta) for delta in self._generator.generate_stream(question, hits))
+        yield ("done", None)

@@ -2,6 +2,8 @@
 
 支持自定义 base_url，可对接智谱等 Anthropic 兼容接口。
 """
+from collections.abc import Iterator
+
 import anthropic
 
 from app.config import Settings
@@ -25,6 +27,15 @@ class AnthropicLLMProvider(LLMProvider):
         return "".join(
             block.text for block in resp.content if block.type == "text"
         ) or ""
+
+    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        with self._client.messages.stream(
+            model=self._model,
+            max_tokens=2048,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        ) as stream:
+            yield from stream.text_stream
 
 
 def create_anthropic_llm(settings: Settings) -> AnthropicLLMProvider:

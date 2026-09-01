@@ -1,4 +1,6 @@
 """OpenAI 提供商：LLM 对话与 Embedding。"""
+from collections.abc import Iterator
+
 import openai
 
 from app.config import Settings
@@ -21,6 +23,20 @@ class OpenAILLMProvider(LLMProvider):
             ],
         )
         return resp.choices[0].message.content or ""
+
+    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        stream = self._client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                yield delta
 
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):

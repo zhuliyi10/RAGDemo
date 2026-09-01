@@ -1,4 +1,6 @@
 """生成器：构造 RAG Prompt 并调用 LLM。"""
+from collections.abc import Iterator
+
 from app.core.base import LLMProvider
 
 SYSTEM_PROMPT = (
@@ -29,3 +31,8 @@ class Generator:
         """根据上下文片段生成回答。"""
         user_prompt = build_user_prompt(question, contexts)
         return self._llm.chat(SYSTEM_PROMPT, user_prompt)
+
+    def generate_stream(self, question: str, contexts: list[dict]) -> Iterator[str]:
+        """流式生成：Prompt 组装与 generate 完全一致，逐段返回回答增量。"""
+        user_prompt = build_user_prompt(question, contexts)
+        return self._llm.chat_stream(SYSTEM_PROMPT, user_prompt)

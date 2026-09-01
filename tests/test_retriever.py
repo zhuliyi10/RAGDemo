@@ -1,5 +1,6 @@
 """检索器与 RAG 流水线测试：使用 mock Embedding/LLM + 临时 ChromaDB。"""
 import hashlib
+from collections.abc import Iterator
 
 from app.core.base import EmbeddingProvider, LLMProvider
 from app.ingestion.pipeline import ingest_document
@@ -28,6 +29,11 @@ class HashEmbeddingProvider(EmbeddingProvider):
 class EchoLLMProvider(LLMProvider):
     def chat(self, system_prompt: str, user_prompt: str) -> str:
         return f"基于上下文的回答: {user_prompt[:20]}"
+
+    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        text = self.chat(system_prompt, user_prompt)
+        for i in range(0, len(text), 4):        # 切成小块模拟流式增量
+            yield text[i : i + 4]
 
 
 def make_store(tmp_path) -> VectorStore:
@@ -110,3 +116,25 @@ class TestRAGPipeline:
         result = pipeline.answer("知识库为空时的问题")
         assert "无法回答" in result.answer
         assert result.sources == []
+
+    def test_answer_stream_events(self, tmp_path):
+        store = make_store(tmp_path)
+        emb = HashEmbeddingProvider()
+        ingest_document(
+            "a.txt",
+            "苹果是一种水果，富含维生素C。".encode("utf-8"),
+            emb,
+            store,
+            chunk_size=200,
+            chunk_overlap=0,
+        )
+        pipeline = RAGPipeline(EchoLLMProvider(), emb, store, top_k=1)
+
+        events = list(pipeline.answer_stream("苹果是什么？"))
+        kinds = [kind for kind, _ in events]
+        # 事件协议：sources 打头，done 收尾，中间全为 delta
+        assert kinds[0] == "sources"
+        assert kinds[-1] == "done"
+        assert set(kinds[1:-1]) == {"delta"}
+        assert events[0][1][0]["source"] == "a.txt"
+        assert "".join(p for kind, p in events if kind == "delta").startswith("基于上下文的回答")

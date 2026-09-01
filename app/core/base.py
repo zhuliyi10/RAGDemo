@@ -1,5 +1,6 @@
 """模型提供商抽象基类。"""
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 
 
 class LLMProvider(ABC):
@@ -8,6 +9,10 @@ class LLMProvider(ABC):
     @abstractmethod
     def chat(self, system_prompt: str, user_prompt: str) -> str:
         """根据系统提示与用户提示生成回复。"""
+
+    @abstractmethod
+    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        """流式生成回复，逐段 yield 文本增量。"""
 
 
 class EmbeddingProvider(ABC):

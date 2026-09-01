@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatMessage, RagMode } from '../types'
-import { query } from '../api'
+import { queryStream } from '../api'
 import Message from './Message'
 
 const MODE_LABEL: Record<RagMode, string> = { custom: '自研', framework: '框架' }
@@ -21,25 +21,31 @@ export default function ChatPanel() {
     const question = input.trim()
     if (!question || loading) return
     setInput('')
-    setMessages((m) => [...m, { role: 'user', text: question }, { role: 'assistant', text: '…' }])
+    // 占位消息：'…' 表示尚未收到任何增量
+    setMessages((m) => [...m, { role: 'user', text: question }, { role: 'assistant', text: '…', mode }])
     setLoading(true)
-    try {
-      const r = await query(question, topK, mode)
+    const patchLast = (patch: (prev: ChatMessage) => ChatMessage) => {
       setMessages((m) => {
         const next = [...m]
-        next[next.length - 1] = { role: 'assistant', text: r.answer, sources: r.sources, mode: r.mode ?? mode }
+        next[next.length - 1] = patch(next[next.length - 1])
         return next
+      })
+    }
+    try {
+      await queryStream(question, topK, mode, {
+        onSources: (sources) => patchLast((prev) => ({ ...prev, sources })),
+        onDelta: (delta) =>
+          patchLast((prev) => ({
+            ...prev,
+            text: (prev.text === '…' ? '' : prev.text) + delta,
+          })),
       })
     } catch (e) {
-      setMessages((m) => {
-        const next = [...m]
-        next[next.length - 1] = {
-          role: 'assistant',
-          text: e instanceof Error ? e.message : String(e),
-          error: true,
-        }
-        return next
-      })
+      patchLast((prev) => ({
+        ...prev,
+        text: e instanceof Error ? e.message : String(e),
+        error: true,
+      }))
     } finally {
       setLoading(false)
     }
@@ -94,7 +100,7 @@ export default function ChatPanel() {
         {messages.map((m, i) => (
           <Message key={i} message={m} />
         ))}
-        {loading && <div className="typing">生成中…</div>}
+        {loading && messages[messages.length - 1]?.text === '…' && <div className="typing">生成中…</div>}
         <div ref={bottomRef} />
       </div>
 

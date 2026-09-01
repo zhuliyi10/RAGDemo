@@ -1,7 +1,9 @@
 """API 路由：文档入库、查询、管理。"""
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.config import Settings, get_settings
 from app.deps import (
@@ -79,6 +81,33 @@ def delete_document(
     return {"status": "deleted", "doc_id": doc_id}
 
 
+def _build_pipeline(
+    req: QueryRequest,
+    settings: Settings,
+    vector_store: VectorStore,
+    llm_provider,
+    embedding_provider,
+):
+    """按 mode 构建对应 pipeline；框架模式构造失败时给出明确 500。"""
+    if req.mode == "framework":
+        try:
+            return FrameworkRAGPipeline(
+                settings=settings,
+                embedding_provider=embedding_provider,
+                vector_store=vector_store,
+                top_k=req.top_k or settings.top_k,
+            )
+        except (RuntimeError, ValueError) as exc:  # 未装依赖 / 提供商或 Key 配置问题
+            logger.warning("框架模式初始化失败: %s", exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return RAGPipeline(
+        llm_provider=llm_provider,
+        embedding_provider=embedding_provider,
+        vector_store=vector_store,
+        top_k=req.top_k or settings.top_k,
+    )
+
+
 @router.post("/query")
 def query(
     req: QueryRequest,
@@ -92,27 +121,46 @@ def query(
     mode 指定实现：custom 走自研 pipeline，framework 走 LangChain 编排；
     两种模式共享同一向量库，仅生成链路不同。
     """
-    if req.mode == "framework":
-        try:
-            pipeline = FrameworkRAGPipeline(
-                settings=settings,
-                embedding_provider=embedding_provider,
-                vector_store=vector_store,
-                top_k=req.top_k or settings.top_k,
-            )
-        except (RuntimeError, ValueError) as exc:  # 未装依赖 / 提供商或 Key 配置问题
-            logger.warning("框架模式初始化失败: %s", exc)
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-    else:
-        pipeline = RAGPipeline(
-            llm_provider=llm_provider,
-            embedding_provider=embedding_provider,
-            vector_store=vector_store,
-            top_k=req.top_k or settings.top_k,
-        )
+    pipeline = _build_pipeline(req, settings, vector_store, llm_provider, embedding_provider)
     try:
         result = pipeline.answer(req.question)
     except Exception as exc:
         logger.exception("问答失败: %s", req.question)
         raise HTTPException(status_code=500, detail=f"问答失败: {exc}") from exc
     return {"answer": result.answer, "sources": result.sources, "mode": req.mode}
+
+
+def _sse(payload: dict) -> str:
+    """构造一条 SSE 事件帧（单行 JSON，ensure_ascii=False 保留中文可读性）。"""
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+@router.post("/query/stream")
+def query_stream(
+    req: QueryRequest,
+    settings: Settings = Depends(get_settings),
+    vector_store: VectorStore = Depends(get_vector_store),
+    llm_provider=Depends(get_llm_provider),
+    embedding_provider=Depends(get_embedding_provider),
+) -> StreamingResponse:
+    """流式 RAG 问答（SSE）：先推 sources，再逐段推 delta，最后推 done。"""
+    pipeline = _build_pipeline(req, settings, vector_store, llm_provider, embedding_provider)
+
+    def event_gen():
+        try:
+            for kind, payload in pipeline.answer_stream(req.question):
+                if kind == "sources":
+                    yield _sse({"type": "sources", "sources": payload})
+                elif kind == "delta":
+                    yield _sse({"type": "delta", "text": payload})
+                elif kind == "done":
+                    yield _sse({"type": "done", "mode": req.mode})
+        except Exception as exc:
+            logger.exception("流式问答失败: %s", req.question)
+            yield _sse({"type": "error", "detail": f"问答失败: {exc}"})
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -26,6 +26,7 @@ RAG(Retrieval-Augmented Generation,检索增强生成)= **先检索、再生成*
 
 - **文档入库**:上传 txt / md / pdf / docx,自动解析、分块、向量化入库,支持多文件批量
 - **语义问答**:提问后检索最相关的 `top_k` 个片段,LLM 生成回答并附**引用来源**(原文件 + 片段 + 相似度)
+- **双模式问答**:同一知识库可一键切换「自研 pipeline」与「LangChain 框架」两种实现,便于对照
 - **文档管理**:查看已入库文档及分块数、按文档删除
 - **多模型切换**:LLM 与 Embedding 独立配置,支持 OpenAI / Anthropic / Ollama / 智谱
 
@@ -36,7 +37,7 @@ REST API 一览:
 | POST | `/api/ingest` | 上传文档入库(multipart 多文件) |
 | GET | `/api/documents` | 列出已入库文档及分块数 |
 | DELETE | `/api/documents/{doc_id}` | 删除文档及其全部向量 |
-| POST | `/api/query` | RAG 问答:`{"question": "...", "top_k": 4}` |
+| POST | `/api/query` | RAG 问答:`{"question": "...", "top_k": 4, "mode": "custom"}` |
 | GET | `/api/health` | 健康检查 |
 
 ## 为什么自研,不用 LangChain?
@@ -49,6 +50,16 @@ REST API 一览:
 
 当然,底层基础设施仍然站在成熟组件的肩膀上:FastAPI(Web 框架)、ChromaDB(向量库)、各家官方 SDK / httpx(模型调用)、pypdf / python-docx(文档解析)—— **不重复造轮子,但 RAG 本身的轮子自己造**。
 
+### 框架模式:可切换的「对照组」
+
+为了把「框架到底帮你做了什么」变成看得见、摸得着的体验,项目在自研链路之外提供了 **LangChain 框架模式**(`/api/query` 的 `mode=framework`):
+
+- 检索复用同一套自研组件与 ChromaDB 知识库,只有生成链路换成了 LangChain 的 ChatModel + LCEL 链
+- 前端一键切换,同一问题两种问法,回答差异一目了然
+- LangChain 为**可选依赖**:不安装不影响自研模式与服务启动,选了框架模式会返回 500 + 安装指引
+
+「为什么不用框架」与「框架长什么样」由此都有了答案 —— 一个亲手写过,一个随手可切。
+
 ## 技术选型与理由
 
 | 层面 | 选型 | 理由 |
@@ -58,6 +69,7 @@ REST API 一览:
 | 向量存储 | ChromaDB PersistentClient | 纯本地零部署,原生 HNSW 与 metadata 过滤 |
 | 模型调用 | openai / anthropic SDK + httpx | 官方 SDK 优先;无 SDK 的用 httpx 直调 |
 | 文档解析 | pypdf / python-docx | 轻量,覆盖主流办公格式 |
+| 框架模式(可选) | langchain-core / openai / anthropic | 与自研链路对照;不安装不影响其余功能 |
 | 前端 | React 18 + Vite 5 | 轻量组合,不引 UI 组件库 |
 | 测试 | pytest | 核心算法逻辑可测 |
 
@@ -76,7 +88,9 @@ app/
 ├── ingestion/           # loader.py + splitter.py + pipeline.py
 ├── retrieval/           # vector_store.py + retriever.py
 ├── generation/          # generator.py(Prompt 设计)
-└── rag/pipeline.py      # RAG 编排:检索 → 增强 → 生成
+└── rag/
+    ├── pipeline.py           # 自研 RAG 编排:检索 → 增强 → 生成
+    └── framework_pipeline.py # LangChain 框架模式(可选依赖)
 ```
 
 接下来 → [原理与架构设计](/guide/02-design)

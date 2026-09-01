@@ -111,11 +111,31 @@ export default function App() {
 | 组件 | 职责 | 关键交互 |
 |---|---|---|
 | `DocumentsPanel` | 文件上传(多选)、文档列表(含分块数)、删除 | 调 `ingestDocuments` 后逐项展示 `errors`,成功即回调 `onChanged` |
-| `ChatPanel` | 问题输入、`top_k` 选择、消息流 | 调 `query`,把 `answer` 与 `sources` 一起渲染 |
-| `Message` | 单条回答 | **引用来源可展开**:来源文件名 + 片段原文 + 相似度 |
+| `ChatPanel` | 问题输入、**模式切换(自研/框架)**、`top_k` 选择、消息流 | 调 `query(question, topK, mode)`,把 `answer` 与 `sources` 一起渲染 |
+| `Message` | 单条回答 | **引用来源可展开**:来源文件名 + 片段原文 + 相似度;回答附**模式徽标** |
 | `HealthBadge` | 顶部健康徽标 | 绿/灰由 App 的 15s 轮询驱动 |
 
 「引用展开」是 RAG 界面的点睛之笔:用户能看到「这个答案依据的是哪个文件的哪些片段、相似度多少」,幻觉与否一目了然。
+
+## 模式切换:自研 vs 框架
+
+`ChatPanel` 工具栏里有一组分段开关,选定 `mode` 随请求发送(状态保留在组件内,切换只影响下一次提问):
+
+```tsx
+const [mode, setMode] = useState<RagMode>('custom')
+
+<div className="mode-switch" role="group" aria-label="问答模式">
+  <button className={mode === 'custom' ? 'active' : ''} onClick={() => setMode('custom')}>
+    自研
+  </button>
+  <button className={mode === 'framework' ? 'active' : ''} onClick={() => setMode('framework')}>
+    框架
+  </button>
+</div>
+```
+
+- 每条回答来自后端回传的 `mode`,在气泡上渲染成小徽标 —— 同一问题用两种模式各问一遍,回答差异一目了然
+- 后端未安装 LangChain 时选「框架」,错误信息(含安装指引)照常透出在错误气泡里,前端无需感知依赖状态
 
 ## 生产构建
 

@@ -26,7 +26,8 @@
 │  api/routes.py        REST API 层(ingest / documents / query / health)                │
 │  deps.py              依赖注入:Provider 与向量库的懒加载单例                           │
 ├───────────────────────────────────────────────────────────────────────────────────────┤
-│  rag/pipeline.py      RAG 编排:Retriever → Generator → RAGResult(answer + sources)   │
+│  rag/pipeline.py           自研编排:Retriever → Generator → RAGResult                   │
+│  rag/framework_pipeline.py 框架模式:LangChain LCEL 链(mode=framework 时启用)         │
 ├──────────────┬────────────────┬───────────────────┬───────────────────────────────────┤
 │ ingestion/   │  retrieval/    │  generation/      │  core/(模型抽象层)                │
 │ loader.py    │  retriever.py  │  generator.py     │  base.py   两个抽象接口           │
@@ -63,12 +64,15 @@
 **问答链路**(POST /api/query):
 
 ```
-问题(question)
-  → Retriever.retrieve()   问题向量化 → ChromaDB 查询 top_k 片段
-  → [空命中则直接返回固定文案,不调 LLM]
-  → Generator.generate()   组装上下文 Prompt → LLM 生成回答
-  → RAGResult { answer, sources[] }   sources 含原文/来源文件/相似度
+问题(question, mode)
+  → mode=custom    → RAGPipeline:自研 Retriever + Generator
+  → mode=framework → FrameworkRAGPipeline:自研 Retriever + LangChain LCEL 链
+  共同:Retriever.retrieve()   问题向量化 → ChromaDB 查询 top_k 片段
+       [空命中则直接返回固定文案,不调 LLM]
+       生成回答 → RAGResult { answer, sources[] }   sources 含原文/来源文件/相似度
 ```
+
+两种模式**共享同一向量库与检索组件**,变量只有生成链路(Prompt 组装 + LLM 调用),保证对照实验的公平性。
 
 两个设计点提前说明:
 
@@ -79,12 +83,13 @@
 
 ```
 用户输入问题
-  → 前端 ChatPanel → POST /api/query {question, top_k}
+  → 前端 ChatPanel → POST /api/query {question, top_k, mode}
   → routes.query() 依赖注入:get_settings / get_vector_store / get_llm_provider / get_embedding_provider
-  → RAGPipeline.answer()
+  → mode=custom:RAGPipeline.answer()  |  mode=framework:FrameworkRAGPipeline.answer()
       → Retriever.retrieve():EmbeddingProvider.embed([question]) → VectorStore.query(top_k)
-      → Generator.generate():build_user_prompt(question, hits) → LLMProvider.chat(system, user)
-  → {answer, sources[]} → 前端渲染回答 + 可展开引用
+      → 生成:自研 build_user_prompt() + LLMProvider.chat()
+              或 LangChain ChatPromptTemplate + ChatModel(LCEL)
+  → {answer, sources[], mode} → 前端渲染回答 + 模式徽标 + 可展开引用
 ```
 
 接下来 → [第 1 步 · 初始化与配置](/guide/03-setup)

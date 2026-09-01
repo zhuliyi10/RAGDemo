@@ -57,6 +57,14 @@ router = APIRouter(prefix="/api")
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, description="用户问题")
     top_k: int | None = Field(default=None, ge=1, le=20, description="检索片段数")
+    mode: str = Field(default="custom", description="问答模式: custom=自研 / framework=LangChain 框架")
+
+    @field_validator("mode")
+    @classmethod
+    def check_mode(cls, v: str) -> str:
+        if v not in ("custom", "framework"):
+            raise ValueError("mode 仅支持 custom 或 framework")
+        return v
 
 
 @router.post("/query")
@@ -65,20 +73,29 @@ def query(req: QueryRequest,
           vector_store: VectorStore = Depends(get_vector_store),
           llm_provider=Depends(get_llm_provider),
           embedding_provider=Depends(get_embedding_provider)) -> dict:
-    pipeline = RAGPipeline(llm_provider, embedding_provider, vector_store,
-                           top_k=req.top_k or settings.top_k)
+    if req.mode == "framework":
+        try:
+            pipeline = FrameworkRAGPipeline(settings, embedding_provider, vector_store,
+                                            top_k=req.top_k or settings.top_k)
+        except (RuntimeError, ValueError) as exc:   # 未装依赖 / 提供商或 Key 配置问题
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+    else:
+        pipeline = RAGPipeline(llm_provider, embedding_provider, vector_store,
+                               top_k=req.top_k or settings.top_k)
     try:
         result = pipeline.answer(req.question)
     except Exception as exc:
         logger.exception("问答失败: %s", req.question)
         raise HTTPException(status_code=500, detail=f"问答失败: {exc}") from exc
-    return {"answer": result.answer, "sources": result.sources}
+    return {"answer": result.answer, "sources": result.sources, "mode": req.mode}
 ```
 
 要点:
 
-- **请求校验交给 pydantic**:`question` 非空、`top_k` 范围 1~20,不合法自动 422
+- **请求校验交给 pydantic**:`question` 非空、`top_k` 范围 1~20、`mode` 仅接受 `custom` / `framework`,不合法自动 422
 - **每请求组装 Pipeline**:RAGPipeline 无状态,`top_k` 可以按请求覆盖(默认回落到全局配置)
+- **mode 切换实现**:`custom` 走自研 pipeline,`framework` 走 LangChain 编排;两种模式共享同一向量库与请求参数,仅生成链路不同,响应回传 `mode` 供前端标注
+- **框架模式是可选能力**:LangChain 未安装时选 `framework` 返回 500 + 安装指引,不影响自研模式
 - **异常收口**:`logger.exception` 记录完整堆栈,对外只暴露 500 + 简明 detail
 
 入库端点体现「单文件失败不扩散」:
@@ -135,10 +152,15 @@ uvicorn app.main:app --reload           # 默认 8000 端口,/docs 有交互式�
 curl -X POST http://localhost:8000/api/ingest \
   -F "files=@guide.pdf" -F "files=@notes.md"
 
-# 问答
+# 问答(自研模式)
 curl -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "如何配置 Ollama?", "top_k": 3}'
+  -d '{"question": "如何配置 Ollama?", "top_k": 3, "mode": "custom"}'
+
+# 问答(框架模式,需安装 langchain-core / langchain-openai / langchain-anthropic)
+curl -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "如何配置 Ollama?", "top_k": 3, "mode": "framework"}'
 ```
 
 下一步 → [第 7 步 · 前端界面](/guide/09-frontend)

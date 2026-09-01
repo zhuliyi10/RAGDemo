@@ -2,7 +2,7 @@
 
 **从 0 到 1 实现**的自研轻量 RAG（检索增强生成）服务：文档入库 → 分块 → 向量化 → 语义检索 → 增强生成。
 
-不用 LangChain / LlamaIndex —— 分块、检索、Prompt 组装、编排全部手写，每一行 RAG 代码都透明可控。
+核心链路不用 LangChain / LlamaIndex —— 分块、检索、Prompt 组装、编排全部手写，每一行 RAG 代码都透明可控；另内置 **LangChain 框架模式**作为对照组，同一知识库可一键切换体验两种实现。
 
 ## 从 0 到 1 文档站（VitePress）
 
@@ -18,6 +18,7 @@ npm run build                            # 产出 docs/.vitepress/dist，可静�
 ## 特性
 
 - 自研文档解析与分块，不依赖 RAG 框架，代码透明可控
+- 双模式问答：自研 pipeline 与 LangChain 框架模式一键切换，共享同一向量库（框架依赖可选，不装不影响自研模式）
 - 多模型提供商可配置切换：OpenAI / Anthropic / Ollama / 智谱（LLM 与 Embedding 可独立选择）
 - ChromaDB 本地持久化向量存储，支持按文档删除与溯源
 - FastAPI 提供完整 REST API
@@ -52,6 +53,7 @@ uvicorn app.main:app --reload
 | `ANTHROPIC_API_KEY` | Anthropic API Key | - |
 | `ZHIPU_API_KEY` | 智谱 API Key | - |
 | `ZHIPU_BASE_URL` | 智谱 Anthropic 兼容对话接口 | `https://open.bigmodel.cn/api/anthropic` |
+| `ZHIPU_OPENAI_BASE_URL` | 智谱 OpenAI 兼容对话接口（框架模式使用） | `https://open.bigmodel.cn/api/paas/v4` |
 | `ZHIPU_EMBEDDING_URL` | 智谱 v4 Embeddings 接口 | `https://open.bigmodel.cn/api/paas/v4/embeddings` |
 | `OLLAMA_BASE_URL` | Ollama 服务地址 | `http://localhost:11434` |
 | `CHUNK_SIZE` | 分块大小（字符） | `800` |
@@ -79,7 +81,7 @@ ZHIPU_API_KEY=你的智谱Key
 
 ## 前端页面
 
-`frontend/` 为 React + TypeScript + Vite 工程，提供可视化界面：知识库文档管理（上传/删除）与对话式问答（含引用来源展开）。
+`frontend/` 为 React + TypeScript + Vite 工程，提供可视化界面：知识库文档管理（上传/删除）与对话式问答（含引用来源展开），问答工具栏支持**自研 / 框架模式切换**，每条回答标注所用模式。
 
 ```bash
 # 终端 1：启动后端
@@ -100,7 +102,7 @@ cd frontend && npm install && npm run dev
 | POST | `/api/ingest` | 上传文档入库（multipart，支持多文件，txt/md/pdf/docx） |
 | GET | `/api/documents` | 列出已入库文档及分块数 |
 | DELETE | `/api/documents/{doc_id}` | 删除文档及其全部向量 |
-| POST | `/api/query` | RAG 问答：`{"question": "...", "top_k": 4}` |
+| POST | `/api/query` | RAG 问答：`{"question": "...", "top_k": 4, "mode": "custom"}`，`mode` 可选 `custom`（自研）/ `framework`（LangChain） |
 | GET | `/api/health` | 健康检查 |
 
 ### 示例
@@ -110,10 +112,15 @@ cd frontend && npm install && npm run dev
 curl -X POST http://localhost:8000/api/ingest \
   -F "files=@guide.pdf" -F "files=@notes.md"
 
-# 问答
+# 问答（自研模式）
 curl -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "如何配置 Ollama？", "top_k": 3}'
+  -d '{"question": "如何配置 Ollama？", "top_k": 3, "mode": "custom"}'
+
+# 问答（框架模式，需安装 langchain-core / langchain-openai / langchain-anthropic）
+curl -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "如何配置 Ollama？", "top_k": 3, "mode": "framework"}'
 ```
 
 ## 架构
@@ -131,7 +138,9 @@ app/
 ├── ingestion/           # 文档加载、分块、入库流水线
 ├── retrieval/           # ChromaDB 封装与语义检索
 ├── generation/          # Prompt 构造与生成
-└── rag/pipeline.py      # RAG 编排：检索 → 增强 → 生成
+└── rag/
+    ├── pipeline.py            # 自研 RAG 编排：检索 → 增强 → 生成
+    └── framework_pipeline.py  # 框架模式：LangChain LCEL（可选依赖）
 ```
 
 ## 测试

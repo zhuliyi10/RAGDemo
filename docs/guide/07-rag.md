@@ -92,8 +92,42 @@ class RAGPipeline:
 
 `RAGResult.sources` 携带 `{source, content, similarity}`,前端「引用展开」展示的就是它。
 
+## 框架模式对照:`app/rag/framework_pipeline.py`
+
+自研链路讲完了,现在请出「对照组」—— 同样的 RAG 流程,用 LangChain 再实现一遍(`mode=framework` 时启用):
+
+```python
+prompt = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),                      # 与自研模式同一个 System Prompt
+    ("human", "【上下文】\n{context}\n\n【问题】\n{question}"),
+])
+chain = prompt | _create_chat_model(settings) | StrOutputParser()
+
+answer = chain.invoke({"context": context, "question": question})
+```
+
+`prompt | llm | parser` 就是 LangChain 的 LCEL 链式编排,等价于自研模式的 `build_user_prompt() → LLMProvider.chat()`,只是把「组装 Prompt + 调用 + 解析」交给框架的标准组件。
+
+两种模式的分工:
+
+| | 自研模式(`mode=custom`) | 框架模式(`mode=framework`) |
+|---|---|---|
+| 检索 | 自研 Retriever | 自研 Retriever(**共用同一知识库**) |
+| Prompt 组装 | `build_user_prompt()` 手写 f-string | `ChatPromptTemplate` 模板 |
+| LLM 调用 | 自研 `LLMProvider.chat()` | LangChain ChatModel(OpenAI 兼容接口 / ChatAnthropic) |
+| 空命中处理 | 直接返回固定文案 | 同左(共用逻辑) |
+
+设计要点:
+
+- **System Prompt 与自研模式完全一致** —— 保证对比是公平的,差异只来自实现方式
+- **检索环节刻意复用**自研 Retriever —— 两种模式共享同一 ChromaDB 知识库,变量只有生成链路
+- **LangChain 是可选依赖**:import 放在构造函数内,未安装时框架模式返回 500 + 安装指引,服务启动与自研模式完全不受影响
+- 智谱 / Ollama 走 OpenAI 兼容接口(`ChatOpenAI` + 自定义 `base_url`),anthropic 用官方 `langchain-anthropic`
+
+**为什么要做这个对照?** 第 1 章说过自研的理由;但「框架到底帮你做了什么」光靠嘴说不够直观。同一问题、同一知识库、同一 Prompt,切换模式各问一遍,框架封装的便利与「黑盒感」就都体会到了。
+
 ## 至此后端核心闭环
 
-到这里,「入库四件套」(loader / splitter / pipeline / vector_store)与「问答三件套」(retriever / generator / pipeline)已经齐了 —— RAG 的全部业务逻辑其实已经完成。剩下的第 6、7 步是把它暴露成 HTTP 服务和可视界面。
+到这里,「入库四件套」(loader / splitter / pipeline / vector_store)与「问答三件套」(retriever / generator / pipeline)已经齐了,外加一个可切换的 LangChain 框架模式 —— RAG 的全部业务逻辑已经完成。剩下的第 6、7 步是把它暴露成 HTTP 服务和可视界面。
 
 下一步 → [第 6 步 · REST API](/guide/08-api)

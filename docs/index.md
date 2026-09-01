@@ -4,7 +4,7 @@ layout: home
 hero:
   name: RAGDemo
   text: 从 0 到 1 实现一个 RAG 服务
-  tagline: 文档入库 → 分块 → 向量化 → 语义检索 → 增强生成。不用 LangChain,不用 LlamaIndex,每一行 RAG 代码都自己写、都讲清楚。
+  tagline: 文档入库 → 分块 → 向量化 → 语义检索 → 增强生成。不用 LangChain,不用 LlamaIndex,每一行 RAG 代码都自己写、都讲清楚 —— 还内置 LangChain 框架模式,同一知识库一键对照。
   actions:
     - theme: brand
       text: 开始阅读
@@ -26,6 +26,9 @@ features:
   - icon: 🗄️
     title: 本地向量存储
     details: ChromaDB 持久化到磁盘,cosine 相似度检索,ID 约定支持按文档整体删除与来源溯源。
+  - icon: ⚖️
+    title: 自研 × 框架双模式
+    details: 同一知识库、同一 Prompt,前端一键切换自研 pipeline 与 LangChain 框架实现,框架帮你做了什么一目了然。
   - icon: 🛡️
     title: 工程化容错
     details: 模型未配置时服务照常启动(懒加载单例);多文件入库单文件失败不互相影响。
